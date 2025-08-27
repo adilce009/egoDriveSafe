@@ -1,7 +1,7 @@
 This repository contains the implementation of my Master's thesis project, which focuses on learning safe and efficient driving policies for autonomous vehicles 
 using ** Deep Reinforcement Learning (DRL)**.
 
-**Thesis Title: Learning Safe and Efficient Driving Policy with Proximal Policy Optimization (PPO) using Rule-Based Rewards and Real-World Offline Data** (yet to appear online)
+**Thesis Title: Learning Safe and Efficient Driving Policy with Proximal Policy Optimization (PPO) using Rule-Based Rewards and Real-World Offline Data** (Thesis link: https://carleton.scholaris.ca/items/bc4e5aeb-27c5-49c5-994b-d9eb866948f6)
 
 Please note that the repository is not updated completely yet. The remaining files will be uloaded soon and a compelete Readme file will be provided as soon as 
 the repository is updated fully.
