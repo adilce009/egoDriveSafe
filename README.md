@@ -3,8 +3,6 @@ using ** Deep Reinforcement Learning (DRL)**.
 
 **Thesis Title: Learning Safe and Efficient Driving Policy with Proximal Policy Optimization (PPO) using Rule-Based Rewards and Real-World Offline Data** (Thesis link: https://carleton.scholaris.ca/items/bc4e5aeb-27c5-49c5-994b-d9eb866948f6)
 
-Please note that the repository is not updated completely yet. The remaining files will be uloaded soon and a compelete Readme file will be provided as soon as 
-the repository is updated fully.
 
 The project was bulilt on the woven-planet level 5 self-driving car simulator (https://github.com/woven-planet/l5kit)
 The original contribution of the thesis was the rule-based reward function that enables the self-driving car to learn a policy compatible with the basic
