@@ -591,7 +591,70 @@ class RewardClass():
         wrapped = torch.fmod(angle_b - angle_a, two_pi)
         closest_angle = torch.fmod(2.0 * wrapped, two_pi) - wrapped
         return torch.abs(closest_angle)
+
+def find_vehicle_points_at_the_back(self):
+        # step-1: find agents that are within the threshold distance
+        # step-2: find agent that are at the back of the ta
+        # step-3: find agents that fall in the current lane of the
+        ta_centroid = self.curr_ego_state["centroid"]
+        neighboring_agents = self.filter_agents_within_threshold_distance()
+        # check if neighboring_agents is empty
+        #neighbors_centroid = neighboring_agents['centroid']
+        ta_travel_direct = self.ta_driving_direction() # gives the answer: centroid points increasing or decreasing?
+
+        if ta_travel_direct == 'increasing':
+            filtered_agents = neighboring_agents[neighboring_agents['centroid'][:,0] < ta_centroid[0]]    # compare x value
+        else:
+            filtered_agents = neighboring_agents[neighboring_agents['centroid'][:,0] > ta_centroid[0]]
+
+        return filtered_agents
+
+    def distance_to_agent_at_back(self):
+        # there is no way to know the lanes at the back.
+        # find the distance to the nearest neighbor that is located on the same lane as that of ta lane
+        #agent_dist_at_back = np.array([100])
+        agent_dist_at_back = self.safe_distance
+        ta_lane = self.curr_ego_state['target_agent_lane']
+        ta_lane_coords = self.mapAPI.get_lane_as_interpolation(
+            ta_lane, INTERPOLATION_POINTS, InterpolationMethod.INTER_ENSURE_LEN
+            )
+        agents_at_back = self.find_vehicle_points_at_the_back() # ensures while filtering the agents that are moving in the same direction as that of ta
+        # now find the agents that are on the same lane as that of ta
+        #repeating code as that of the other function. consider making a separate function and call
+        nbr_dist =[]
+        nbr_list = []
+
+        for i in range(len(agents_at_back)):
+            lane_dist = np.linalg.norm(ta_lane_coords["xyz_midlane"][:, :2] - agents_at_back[i]['centroid'], axis=-1)
+            min_dist = np.min(lane_dist) # minimum distance from the neighbor's centroid to all the mid-line points of the lane
+            if min_dist < 2:    # lane width from the mid line
+                nbr_dist.append(min_dist) # record the minimum distance
+                nbr_list.append(agents_at_back[i])   # record the neighbor
+        # find distance to the neighbors on the same lane or the lanes ahead
+        if len(nbr_list) > 0:
+            nbr_list = np.array(nbr_list)
+            nbr_centroids = nbr_list['centroid']
+            dist_to_nbrs_at_back = np.linalg.norm(self.curr_ego_state['centroid'] - nbr_centroids, axis=-1)
+
+        return agent_dist_at_back if len(nbr_dist)==0 else np.array([min(dist_to_nbrs_at_back)])
+
+    def find_lane_width(self, lane):
+
+        lane_coords = self.mapAPI.get_lane_as_interpolation(
+            lane, INTERPOLATION_POINTS, InterpolationMethod.INTER_ENSURE_LEN
+        )
+        mid_point = int(len(lane_coords['xyz_left']) / 2)
+        dist_1 = np.linalg.norm(lane_coords['xyz_left'][0, :2] - lane_coords['xyz_right'][0, :2], axis=-1)
+        dist_2 = np.linalg.norm(lane_coords['xyz_left'][-1, :2] - lane_coords['xyz_right'][-1, :2], axis=-1)
+        dist_3 = np.linalg.norm(lane_coords['xyz_left'][mid_point, :2] - lane_coords['xyz_right'][mid_point, :2],
+                                axis=-1)
+        average_lane_width = np.mean((np.folat32(dist_1), np.float32(dist_2), np.float32(dist_3)))
+        return average_lane_width
+
+#### HELPER FUNCTIONS ABOVE
+
     def get_reward(self, curr_ego_state, predicted_ego_state, sim_dataset, scene_index, frame_index):
+        ##### THIS IS THE MAIN FUNCTION TO BE CALLED (FROM ENVIRONMENT) TO GET REWARD FOR THE ACTION TAKEN #####
         # some situations. (1) if the target agent is in a segmnent and there is no upcoming
         # stopping reason (stop sign or red light), the car needs to maintain a safe distance
         # from the car. this safe distance will depend on agent's current speed: 2s/3s rule.
@@ -742,158 +805,8 @@ class RewardClass():
             self.prev_lane = self.prev_lane[0]
         self.prev_lane_coord = self.mapAPI.get_lane_as_interpolation(
             self.prev_lane, INTERPOLATION_POINTS, InterpolationMethod.INTER_ENSURE_LEN)
+        
         return reward_dict
 
-    #_________________________________________________________________________________________________________
-    #__________________________________________________________===============================================
-
-    def find_vehicle_points_at_the_back(self):
-        # step-1: find agents that are within the threshold distance
-        # step-2: find agent that are at the back of the ta
-        # step-3: find agents that fall in the current lane of the
-        ta_centroid = self.curr_ego_state["centroid"]
-        neighboring_agents = self.filter_agents_within_threshold_distance()
-        # check if neighboring_agents is empty
-        #neighbors_centroid = neighboring_agents['centroid']
-        ta_travel_direct = self.ta_driving_direction() # gives the answer: centroid points increasing or decreasing?
-
-        if ta_travel_direct == 'increasing':
-            filtered_agents = neighboring_agents[neighboring_agents['centroid'][:,0] < ta_centroid[0]]    # compare x value
-        else:
-            filtered_agents = neighboring_agents[neighboring_agents['centroid'][:,0] > ta_centroid[0]]
-
-        return filtered_agents
-
-    def distance_to_agent_at_back(self):
-        # there is no way to know the lanes at the back.
-        # find the distance to the nearest neighbor that is located on the same lane as that of ta lane
-        #agent_dist_at_back = np.array([100])
-        agent_dist_at_back = self.safe_distance
-        ta_lane = self.curr_ego_state['target_agent_lane']
-        ta_lane_coords = self.mapAPI.get_lane_as_interpolation(
-            ta_lane, INTERPOLATION_POINTS, InterpolationMethod.INTER_ENSURE_LEN
-            )
-        agents_at_back = self.find_vehicle_points_at_the_back() # ensures while filtering the agents that are moving in the same direction as that of ta
-        # now find the agents that are on the same lane as that of ta
-        #repeating code as that of the other function. consider making a separate function and call
-        nbr_dist =[]
-        nbr_list = []
-
-        for i in range(len(agents_at_back)):
-            lane_dist = np.linalg.norm(ta_lane_coords["xyz_midlane"][:, :2] - agents_at_back[i]['centroid'], axis=-1)
-            min_dist = np.min(lane_dist) # minimum distance from the neighbor's centroid to all the mid-line points of the lane
-            if min_dist < 2:    # lane width from the mid line
-                nbr_dist.append(min_dist) # record the minimum distance
-                nbr_list.append(agents_at_back[i])   # record the neighbor
-        # find distance to the neighbors on the same lane or the lanes ahead
-        if len(nbr_list) > 0:
-            nbr_list = np.array(nbr_list)
-            nbr_centroids = nbr_list['centroid']
-            dist_to_nbrs_at_back = np.linalg.norm(self.curr_ego_state['centroid'] - nbr_centroids, axis=-1)
-
-        return agent_dist_at_back if len(nbr_dist)==0 else np.array([min(dist_to_nbrs_at_back)])
-
-    def find_lane_width(self, lane):
-
-        lane_coords = self.mapAPI.get_lane_as_interpolation(
-            lane, INTERPOLATION_POINTS, InterpolationMethod.INTER_ENSURE_LEN
-        )
-        mid_point = int(len(lane_coords['xyz_left']) / 2)
-        dist_1 = np.linalg.norm(lane_coords['xyz_left'][0, :2] - lane_coords['xyz_right'][0, :2], axis=-1)
-        dist_2 = np.linalg.norm(lane_coords['xyz_left'][-1, :2] - lane_coords['xyz_right'][-1, :2], axis=-1)
-        dist_3 = np.linalg.norm(lane_coords['xyz_left'][mid_point, :2] - lane_coords['xyz_right'][mid_point, :2],
-                                axis=-1)
-        average_lane_width = np.mean((np.folat32(dist_1), np.float32(dist_2), np.float32(dist_3)))
-        return average_lane_width
-
-# the following part of code belonged to find dist to neighbors front and back
-
-# set a distance that signifies the absense of a neighbour in front
-        #agent_dist = np.array([100])  # setting a distance greater than the threshold distance
-        # min_dist_front = np.array(self.safe_distance)
-        # min_dist_back = np.array(self.safe_distance)
-        # min_dist_front = np.array([100])
-        # min_dist_back = np.array([100])
-        # agent_dist = np.array((min_dist_front, min_dist_back))
-        # ##### find target agent lane and the lanes ahead
-        # target_agent_lane = self.target_agent_dict['target_agent_lane']
-        # #is there a lane ahead of target_agent_lane?
-        # lanes_ahead = self.mapAPI.__getitem__(target_agent_lane).element.lane.lanes_ahead  # will be empty if there is no lanes_ahead filed
-        #
-        # lane_ahead_id = []
-        # if len(lanes_ahead) != 0:
-        #     for i in range(len(lanes_ahead)):
-        #         lane_ahead_id.append(lanes_ahead[i].id)    # there might be several lanes, but we are taking the first one only
-        # nbr_dist = []
-        # nbr_list = []
-        #
-        # ###### find all the neighbors of the target agent within the safe distance
-        # neighboring_agents = self.filter_agents_within_threshold_distance()
-        # # check if neighboring_agents is empty
-        # neighbors_centroid = neighboring_agents['centroid']
-        # # find neighbors within safe distance
-        # dist = np.linalg.norm(neighbors_centroid - self.target_agent_dict['centroid'], axis = -1)
-        # # ignore the neighbor that has a distance less than 0.5. this is a hack. such a neighbor is appearing probably because
-        # # of error difference while matrix transformation.
-        # mask = dist >= 0.5
-        # #print('distance to the neighbors:', dist)
-        # #print('safe distance:', self.safe_distance)
-        # neighboring_agents = neighboring_agents[mask]
-        # dist = dist[mask]
-        # #dist = dist[dist <= self.safe_distance]
-        # #print('distances less/= than safe distance:', dist)
-        # #neighboring_agents = neighboring_agents[:len(dist)] # neighbors within safe distance
-        # #print('neighbors within safe distance:', neighboring_agents)
-        # lane_ahead_id.append(target_agent_lane)
-        # lanes_indices = lane_ahead_id
-        #
-        # ####### check if the agents within the safe distance are in the same lane of the
-        # ####### target agent or in a lane ahead
-        # for idx, lane_idx in enumerate(lanes_indices):
-        #     lane_coords = self.mapAPI.get_lane_as_interpolation(
-        #     lane_idx, INTERPOLATION_POINTS, InterpolationMethod.INTER_ENSURE_LEN
-        #     )
-        #     for i in range(len(neighboring_agents)):
-        #         lane_dist = np.linalg.norm(lane_coords["xyz_midlane"][:, :2] - neighboring_agents[i]['centroid'], axis=-1)
-        #         min_dist = np.min(lane_dist) # minimum distance from the neighbor's centroid to all the mid-line points of the lane
-        #         if min_dist < 2:    # lane width from the mid line
-        #             nbr_dist.append(min_dist) # record the minimum distance
-        #             nbr_list.append(neighboring_agents[i])   # record the neighbor
-        # # find distance to the neighbors on the same lane or the lanes ahead
-        #
-        # if len(nbr_list) > 0:
-        #     nbr_list = np.array(nbr_list)
-        #     nbr_track_id = nbr_list['track_id']
-        #     nbr_centroids = nbr_list['centroid']
-        #     #print('neighbors track_ids:', nbr_track_id, "target agent track_id:", self.target_agent_dict['track_id'])
-        #     # if ta_direction == 'increasing':
-        #     #     nbr_ahead = nbr_centroids[nbr_centroids[:,0]>ta_centroid_x]
-        #     #     nbr_behind = nbr_centroids[nbr_centroids[:,0]< ta_centroid_x]
-        #     # elif ta_direction == 'decreasing':
-        #     #     nbr_ahead = nbr_centroids[nbr_centroids[:, 0] < ta_centroid_x]
-        #     #     nbr_behind = nbr_centroids[nbr_centroids[:, 0] > ta_centroid_x]
-        #     # alternative way to find neighbor ahead and neighbor behind
-        #     dist_to_neighbors = transform_points(nbr_centroids, self.target_agent_dict['agent_from_world'])
-        #     # print('distance to neighbors:', dist_to_neighbors)
-        #     dist = np.linalg.norm(np.array((0,0)) - dist_to_neighbors, axis=1)
-        #     dist[dist_to_neighbors[:, 0] < 0 ] = -dist[dist_to_neighbors[:, 0] < 0]
-        #     # print('dist in distance_to_agent_front_back():', dist)
-        #     if np.any(dist>0):
-        #         min_dist_front = np.min(dist[dist > 0])
-        #     if np.any(dist < 0):
-        #         min_dist_back = np.max(dist[dist < 0])
-        #         min_dist_back = abs(min_dist_back)
-        #     # if len(nbr_ahead)>0:
-        #     #     dist_to_nbrs_in_front = np.linalg.norm(self.target_agent_dict['centroid'] - nbr_ahead, axis=-1)
-        #     #     min_dist_front = min(dist_to_nbrs_in_front)
-        #     # if len(nbr_behind)>0:
-        #     #     dist_to_nbrs_at_back = np.linalg.norm(self.target_agent_dict['centroid'] - nbr_behind, axis=-1)
-        #     #     min_dist_back = min(dist_to_nbrs_at_back)
-        #     # print('all neighbour centroids:', nbr_centroids)
-        #     # print('al neighbour track id:', nbr_list['track_id'])
-        #     # print('distance to neighbors:', dist_to_nbrs)
-        # # print('distance to the closest neighbor:', dist_to_nbrs)
-        #
-        # # nbr_list has the neighbors both at the front and the back. find agent at the front and at the back
-        #
-        # return agent_dist if len(nbr_dist)==0 else np.array((min_dist_front, min_dist_back))
+   
+    
